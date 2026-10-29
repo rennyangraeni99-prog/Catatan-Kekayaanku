@@ -1,0 +1,6 @@
+{
+  "name": "BukuKas Pro - Pencatatan Keuangan",
+  "description": "Aplikasi pencatatan keuangan lengkap dengan filter bulan, jenis pemasukan dan pengeluaran, kategori, catatan, ringkasan laporan bulanan, dan grafik statistik transaksi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
