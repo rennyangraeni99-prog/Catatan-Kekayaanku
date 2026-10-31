@@ -6,11 +6,7 @@ import {
   Check,
   LogOut,
   Trash2,
-  Shield,
-  Briefcase,
-  Home,
-  UserCheck,
-  Plus,
+  AlertTriangle,
 } from 'lucide-react';
 import { UserProfile } from '../types/user';
 
@@ -44,7 +40,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
   const [showAddLocalForm, setShowAddLocalForm] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState('Akun Pribadi');
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [targetUserToDelete, setTargetUserToDelete] = useState<UserProfile | null>(null);
 
   if (!isOpen) return null;
 
@@ -70,10 +66,10 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-extrabold text-white">
-                Kelola Pengguna & Multi-Akun
+                Kelola Akun & Multi-Pengguna
               </h3>
               <p className="text-[11px] text-white/80">
-                Pindah akun atau tambah pengguna lain (Google / Profil Terpisah)
+                Pindah akun, tambah pengguna baru, atau hapus akun yang tidak terpakai
               </p>
             </div>
           </div>
@@ -88,46 +84,59 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
         {/* Modal Body */}
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
           {/* Active User Highlight Banner */}
-          <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              {activeUser.photoURL ? (
-                <img
-                  src={activeUser.photoURL}
-                  alt={activeUser.name}
-                  className="w-12 h-12 rounded-full border-2 border-[#FF6A00]"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-[#FF6A00] text-white font-extrabold flex items-center justify-center text-lg shadow-sm">
-                  {activeUser.name.charAt(0).toUpperCase()}
+          <div className="p-4 bg-amber-50/90 rounded-2xl border border-amber-200 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                {activeUser.photoURL ? (
+                  <img
+                    src={activeUser.photoURL}
+                    alt={activeUser.name}
+                    className="w-12 h-12 rounded-full border-2 border-[#FF6A00]"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-[#FF6A00] text-white font-extrabold flex items-center justify-center text-lg shadow-sm">
+                    {activeUser.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#FF6A00]">
+                      Akun Sedang Aktif
+                    </span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  </div>
+                  <h4 className="text-sm font-extrabold text-[#2D2B2A] truncate">
+                    {activeUser.name}
+                  </h4>
+                  <p className="text-[11px] text-stone-500 truncate">
+                    {activeUser.email} · <span className="font-mono">{getUserTransactionCount(activeUser.id)} transaksi</span>
+                  </p>
                 </div>
-              )}
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#FF6A00]">
-                    Akun Sedang Aktif
-                  </span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                </div>
-                <h4 className="text-sm font-extrabold text-[#2D2B2A] truncate">
-                  {activeUser.name}
-                </h4>
-                <p className="text-[11px] text-stone-500 truncate">
-                  {activeUser.email} · {activeUser.roleDescription || 'Pengguna'}
-                </p>
+              </div>
+
+              {/* Action buttons on active banner */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {activeUser.isGoogle && (
+                  <button
+                    onClick={onLogoutGoogle}
+                    title="Keluar dari sesi Google ini"
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-stone-600 bg-white border border-stone-200 hover:bg-stone-100 rounded-full transition shadow-xs"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Keluar</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setTargetUserToDelete(activeUser)}
+                  title="Hapus akun aktif ini beserta datanya"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 rounded-full transition shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Akun</span>
+                </button>
               </div>
             </div>
-
-            {activeUser.isGoogle && (
-              <button
-                onClick={onLogoutGoogle}
-                title="Keluar dari sesi Google ini"
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-stone-600 bg-white border border-stone-200 hover:bg-stone-100 rounded-full transition shrink-0 shadow-xs"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Keluar</span>
-              </button>
-            )}
           </div>
 
           {/* Action Row: Add Google Account or Add Local Profile */}
@@ -169,7 +178,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Nama Profil (Contoh: Usaha Kuliner, Keuangan Istri/Suami)"
+                  placeholder="Nama Profil (Contoh: Usaha Kuliner, Keuangan Pribadi, Tabungan Rumah)"
                   value={newUserName}
                   onChange={(e) => setNewUserName(e.target.value)}
                   className="w-full px-4 py-2 text-xs rounded-full bg-white border border-stone-200 text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#FF6A00]"
@@ -207,10 +216,10 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-stone-600">
-                Daftar Akun & Profil Tersimpan ({users.length})
+                Daftar Semua Akun ({users.length})
               </h4>
               <span className="text-[11px] text-stone-400">
-                Pilih akun untuk beralih catatan
+                Klik akun untuk beralih atau ikon tempat sampah untuk menghapus
               </span>
             </div>
 
@@ -291,16 +300,14 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                         </button>
                       )}
 
-                      {/* Delete button (cannot delete if it's the only profile or currently active) */}
-                      {users.length > 1 && !isActive && (
-                        <button
-                          onClick={() => setDeleteConfirmId(u.id)}
-                          title="Hapus profil dari daftar"
-                          className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      {/* Delete button (available for all accounts) */}
+                      <button
+                        onClick={() => setTargetUserToDelete(u)}
+                        title={`Hapus akun "${u.name}"`}
+                        className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition flex items-center justify-center"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 );
@@ -316,36 +323,57 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
             onClick={onClose}
             className="px-4 py-1.5 text-xs font-bold text-stone-700 bg-white border border-stone-200 hover:bg-stone-100 rounded-full transition"
           >
-            Selesai
+            Tutup
           </button>
         </div>
       </div>
 
       {/* Confirmation Dialog for Deleting a Profile */}
-      {deleteConfirmId && (
+      {targetUserToDelete && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-[#FFFDF9] rounded-3xl shadow-2xl border border-stone-200 p-6 space-y-4">
-            <h4 className="text-base font-extrabold text-[#2D2B2A]">
-              Hapus Profil Pengguna Ini?
-            </h4>
-            <p className="text-xs text-stone-500">
-              Profil dan data catatan keuangan lokal untuk akun ini akan dihapus dari peramban.
-            </p>
+          <div className="w-full max-w-sm bg-[#FFFDF9] rounded-3xl shadow-2xl border border-stone-200 p-6 space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h4 className="text-base font-extrabold text-[#2D2B2A]">
+                Hapus Akun & Catatan?
+              </h4>
+              <p className="text-xs text-stone-600">
+                Apakah Anda yakin ingin menghapus akun <span className="font-bold text-stone-900">"{targetUserToDelete.name}"</span>?
+              </p>
+            </div>
+
+            <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-2xl text-[11px] text-rose-700 space-y-1">
+              <p className="font-bold">Perhatian:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Total <strong>{getUserTransactionCount(targetUserToDelete.id)} data transaksi</strong> pada akun ini akan dihapus dari peramban.</li>
+                {targetUserToDelete.id === activeUserId && (
+                  <li>Akun ini sedang aktif; peramban akan otomatis dialihkan ke akun lain setelah dihapus.</li>
+                )}
+                {users.length === 1 && (
+                  <li>Ini adalah satu-satunya akun; akun akan direset kembali bersih ke Buku Kas Utama default.</li>
+                )}
+              </ul>
+            </div>
+
             <div className="flex justify-end gap-2 pt-2">
               <button
-                onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-1.5 text-xs font-bold text-stone-600 hover:bg-stone-100 rounded-full transition"
+                onClick={() => setTargetUserToDelete(null)}
+                className="px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-100 rounded-full transition"
               >
                 Batal
               </button>
               <button
                 onClick={() => {
-                  onDeleteUser(deleteConfirmId);
-                  setDeleteConfirmId(null);
+                  const id = targetUserToDelete.id;
+                  setTargetUserToDelete(null);
+                  onDeleteUser(id);
                 }}
-                className="px-4 py-1.5 text-xs font-bold text-white bg-[#E05345] hover:bg-rose-700 rounded-full shadow-xs transition"
+                className="px-5 py-2 text-xs font-bold text-white bg-[#E05345] hover:bg-rose-700 rounded-full shadow-md transition"
               >
-                Ya, Hapus
+                Ya, Hapus Akun
               </button>
             </div>
           </div>

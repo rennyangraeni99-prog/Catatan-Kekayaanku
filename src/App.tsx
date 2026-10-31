@@ -256,16 +256,54 @@ export default function App() {
     showToast(`Profil baru "${name}" berhasil dibuat dan diaktifkan.`);
   };
 
-  // Delete profile
-  const handleDeleteUser = (userId: string) => {
-    if (users.length <= 1) return;
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
-    localStorage.removeItem(`catatan_kekayaanku_trx_${userId}`);
-    if (activeUserId === userId) {
-      const nextUser = users.find((u) => u.id !== userId) || DEFAULT_GUEST_PROFILE;
-      handleSwitchUser(nextUser.id);
+  // Delete profile (supports deleting any profile, including active and last one)
+  const handleDeleteUser = async (userId: string) => {
+    const targetUser = users.find((u) => u.id === userId);
+    const targetName = targetUser?.name || 'Akun';
+
+    // If it's a Google account, sign out Google session if currently signed in
+    if (targetUser?.isGoogle && currentUser?.uid === userId) {
+      try {
+        await logout();
+      } catch (e) {
+        console.error('Error logging out during account deletion', e);
+      }
+      setCurrentUser(null);
+      setAccessToken(null);
     }
-    showToast('Profil pengguna telah dihapus.');
+
+    // Remove local storage transactions for this user
+    try {
+      localStorage.removeItem(`catatan_kekayaanku_trx_${userId}`);
+    } catch (e) {
+      console.error(e);
+    }
+
+    const remainingUsers = users.filter((u) => u.id !== userId);
+
+    if (remainingUsers.length === 0) {
+      // If the last remaining account is deleted, reset to a clean default guest profile
+      const freshGuest: UserProfile = {
+        ...DEFAULT_GUEST_PROFILE,
+        lastActive: new Date().toISOString(),
+      };
+      setUsers([freshGuest]);
+      setActiveUserId(freshGuest.id);
+      setTransactions([]);
+      try {
+        localStorage.removeItem(`catatan_kekayaanku_trx_${freshGuest.id}`);
+      } catch (e) {
+        console.error(e);
+      }
+      showToast(`Akun "${targetName}" berhasil dihapus. Profil telah direset ke Buku Kas Utama.`);
+    } else {
+      setUsers(remainingUsers);
+      if (activeUserId === userId) {
+        const nextUser = remainingUsers[0];
+        handleSwitchUser(nextUser.id);
+      }
+      showToast(`Akun "${targetName}" berhasil dihapus beserta seluruh catatannya.`);
+    }
   };
 
   // Sign out Google session
