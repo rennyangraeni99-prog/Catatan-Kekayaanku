@@ -31,6 +31,7 @@ interface TransactionTableProps {
   availableMonths: string[];
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
+  viewAllUsers?: boolean;
 }
 
 export const TransactionTable: React.FC<TransactionTableProps> = ({
@@ -44,6 +45,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
   availableMonths,
   searchQuery = '',
   onSearchChange,
+  viewAllUsers = false,
 }) => {
   const [localSearch, setLocalSearch] = useState('');
   const [filterTipe, setFilterTipe] = useState<'all' | 'pemasukan' | 'pengeluaran'>('all');
@@ -291,6 +293,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-stone-100/70 border-b border-stone-200 text-[11px] font-bold text-stone-700 uppercase tracking-wider">
+              {viewAllUsers && <th className="py-3 px-4 whitespace-nowrap">Pemilik Akun</th>}
               <th className="py-3 px-4 whitespace-nowrap">Bulan</th>
               <th className="py-3 px-4 whitespace-nowrap">Tanggal</th>
               <th className="py-3 px-4 whitespace-nowrap">Jenis Transaksi</th>
@@ -303,7 +306,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
           <tbody className="divide-y divide-stone-100 text-xs">
             {filteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-stone-500">
+                <td colSpan={viewAllUsers ? 8 : 7} className="py-12 text-center text-stone-500">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <FileSpreadsheet className="w-8 h-8 text-stone-300" />
                     <p className="font-bold text-stone-700">Tidak ada transaksi yang cocok</p>
@@ -326,6 +329,14 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
                 return (
                   <tr key={trx.id} className="hover:bg-amber-50/40 transition-colors">
+                    {/* Pemilik Akun (Khusus Super Admin Mode Semua Pengguna) */}
+                    {viewAllUsers && (
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300/60 text-[10px] font-bold">
+                          {trx.userName || trx.userEmail || 'Pengguna'}
+                        </span>
+                      </td>
+                    )}
                     {/* Bulan */}
                     <td className="py-3 px-4 whitespace-nowrap font-semibold text-stone-800">
                       {formatBulanIndo(trx.bulan)}

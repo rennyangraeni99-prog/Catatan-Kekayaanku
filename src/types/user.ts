@@ -5,6 +5,7 @@ export interface UserProfile {
   photoURL?: string;
   isGoogle: boolean;
   roleDescription?: string; // e.g. "Akun Pribadi", "Akun Bisnis / Toko", "Keuangan Keluarga"
+  role?: 'super_admin' | 'user';
   lastActive: string;
 }
 

@@ -11,6 +11,10 @@ export interface Transaction {
   jumlah: number; // Rupiah amount
   catatan: string; // Notes / description
   createdAt: string;
+  userId?: string;
+  userEmail?: string;
+  userName?: string;
+  updatedAt?: string;
 }
 
 export interface MonthlySummary {

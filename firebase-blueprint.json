@@ -1,0 +1,148 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique user ID (auth UID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile picture URL"
+        },
+        "role": {
+          "type": "string",
+          "description": "User role: user or super_admin",
+          "enum": ["user", "super_admin"]
+        },
+        "roleDescription": {
+          "type": "string",
+          "description": "Description of the role or account type"
+        },
+        "isGoogle": {
+          "type": "boolean",
+          "description": "Whether user authenticated with Google"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp in ISO format"
+        },
+        "lastActive": {
+          "type": "string",
+          "description": "Last active timestamp in ISO format"
+        }
+      },
+      "required": ["id", "name", "email", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial income or expense transaction record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique transaction ID"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID"
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Owner email address"
+        },
+        "userName": {
+          "type": "string",
+          "description": "Owner display name"
+        },
+        "bulan": {
+          "type": "string",
+          "description": "Month string (YYYY-MM)"
+        },
+        "tanggal": {
+          "type": "string",
+          "description": "Date of transaction (YYYY-MM-DD)"
+        },
+        "tipe": {
+          "type": "string",
+          "description": "Transaction type",
+          "enum": ["pemasukan", "pengeluaran"]
+        },
+        "jenisPemasukan": {
+          "type": "string",
+          "description": "Subcategory of income"
+        },
+        "jenisPengeluaran": {
+          "type": "string",
+          "description": "Subcategory of expense"
+        },
+        "kategori": {
+          "type": "string",
+          "description": "Category of income or expense"
+        },
+        "jumlah": {
+          "type": "number",
+          "description": "Monetary amount in Rupiah"
+        },
+        "catatan": {
+          "type": "string",
+          "description": "Transaction notes or description"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp in ISO format"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp in ISO format"
+        }
+      },
+      "required": ["id", "userId", "bulan", "tanggal", "tipe", "kategori", "jumlah", "catatan", "createdAt"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Super admin registry document",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Super admin email address"
+        },
+        "role": {
+          "type": "string",
+          "description": "super_admin role"
+        },
+        "assignedAt": {
+          "type": "string",
+          "description": "Assignment timestamp"
+        }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection isolated per user with super admin read access"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Financial transactions isolated by owner userId; accessible by owner and super admin"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Designated super administrators with global read permissions"
+    }
+  }
+}

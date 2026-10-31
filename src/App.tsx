@@ -5,7 +5,18 @@ import { UserProfile, DEFAULT_GUEST_PROFILE } from './types/user';
 import { INITIAL_TRANSACTIONS } from './data/initialData';
 import { calculateMonthlySummary } from './utils/formatters';
 import { initAuth, googleSignIn, logout } from './services/firebaseAuth';
+import {
+  testConnection,
+  isUserSuperAdmin,
+  saveUserProfileToFirestore,
+  fetchAllUsersForSuperAdmin,
+  subscribeTransactions,
+  saveTransaction,
+  deleteTransaction,
+  syncLocalTransactionsToFirestore,
+} from './services/firestoreService';
 import { Header } from './components/Header';
+import { SuperAdminBanner } from './components/SuperAdminBanner';
 import { HeroWealthSection } from './components/HeroWealthSection';
 import { MonthlySummaryCards } from './components/MonthlySummaryCards';
 import { TransactionTable } from './components/TransactionTable';
@@ -15,13 +26,13 @@ import { TransactionFormModal } from './components/TransactionFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { UserAccountModal } from './components/UserAccountModal';
-import { CheckCircle2, RotateCcw, Coins, Cloud, Users } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Coins, Cloud, Users, UploadCloud } from 'lucide-react';
 
 const USERS_STORAGE_KEY = 'catatan_kekayaanku_users_v2';
 const ACTIVE_USER_ID_KEY = 'catatan_kekayaanku_active_uid_v2';
 
 export default function App() {
-  // Registered profiles list
+  // Registered profiles list (local cache)
   const [users, setUsers] = useState<UserProfile[]>(() => {
     try {
       const saved = localStorage.getItem(USERS_STORAGE_KEY);
@@ -64,7 +75,6 @@ export default function App() {
           return parsed;
         }
       }
-      // If default guest user and no previous data, load sample data
       if (activeUserId === DEFAULT_GUEST_PROFILE.id) {
         return INITIAL_TRANSACTIONS;
       }
@@ -85,6 +95,11 @@ export default function App() {
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
+  // Super Admin & Privacy states
+  const [viewAllUsers, setViewAllUsers] = useState<boolean>(false);
+  const [selectedUserFilter, setSelectedUserFilter] = useState<string>('ALL');
+  const [allUsersList, setAllUsersList] = useState<UserProfile[]>([]);
+
   // Modal states
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -97,10 +112,20 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3200);
+    }, 3500);
   };
 
-  // Persist users list
+  // Test Firestore connection on boot
+  useEffect(() => {
+    testConnection();
+  }, []);
+
+  // Determine if active session is Super Admin
+  const isSuperAdmin = useMemo(() => {
+    return isUserSuperAdmin(currentUser) || isUserSuperAdmin(activeUser);
+  }, [currentUser, activeUser]);
+
+  // Persist users list locally
   useEffect(() => {
     try {
       localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
@@ -109,7 +134,7 @@ export default function App() {
     }
   }, [users]);
 
-  // Persist active user ID
+  // Persist active user ID locally
   useEffect(() => {
     try {
       localStorage.setItem(ACTIVE_USER_ID_KEY, activeUserId);
@@ -118,7 +143,7 @@ export default function App() {
     }
   }, [activeUserId]);
 
-  // Persist current transactions to the active user's storage key
+  // Persist current transactions to active user's local cache
   useEffect(() => {
     try {
       const storageKey = `catatan_kekayaanku_trx_${activeUserId}`;
@@ -127,6 +152,55 @@ export default function App() {
       console.error('Failed to save user transactions', e);
     }
   }, [transactions, activeUserId]);
+
+  // Fetch all registered users if Super Admin
+  useEffect(() => {
+    if (isSuperAdmin && currentUser) {
+      fetchAllUsersForSuperAdmin()
+        .then((list) => {
+          if (list && list.length > 0) {
+            setAllUsersList(list);
+          }
+        })
+        .catch((err) => {
+          console.warn('Super Admin users fetch note:', err);
+        });
+    }
+  }, [isSuperAdmin, currentUser]);
+
+  // Real-time Firestore synchronization for logged-in user
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Save profile to Firestore
+    const profile: UserProfile = {
+      id: currentUser.uid,
+      name: currentUser.displayName || currentUser.email?.split('@')[0] || 'Pengguna',
+      email: currentUser.email || '',
+      photoURL: currentUser.photoURL || undefined,
+      isGoogle: true,
+      role: isSuperAdmin ? 'super_admin' : 'user',
+      roleDescription: isSuperAdmin ? 'Super Administrator' : 'Pengguna Publik',
+      lastActive: new Date().toISOString(),
+    };
+    saveUserProfileToFirestore(profile);
+
+    // Subscribe to Firestore transactions
+    const unsub = subscribeTransactions(
+      currentUser.uid,
+      isSuperAdmin,
+      viewAllUsers,
+      selectedUserFilter,
+      (cloudTxs) => {
+        setTransactions(cloudTxs);
+      },
+      (err) => {
+        console.warn('Realtime subscription notice:', err);
+      }
+    );
+
+    return () => unsub();
+  }, [currentUser, isSuperAdmin, viewAllUsers, selectedUserFilter]);
 
   // Listen to Firebase Auth state
   useEffect(() => {
@@ -138,33 +212,25 @@ export default function App() {
         // Auto-register or update Google User Profile
         setUsers((prev) => {
           const exists = prev.find((u) => u.id === user.uid);
+          const isSuper = isUserSuperAdmin(user);
+          const userObj: UserProfile = {
+            id: user.uid,
+            name: user.displayName || user.email?.split('@')[0] || 'Pengguna Google',
+            email: user.email || '',
+            photoURL: user.photoURL || undefined,
+            isGoogle: true,
+            role: isSuper ? 'super_admin' : 'user',
+            roleDescription: isSuper ? 'Super Administrator' : 'Pengguna Publik',
+            lastActive: new Date().toISOString(),
+          };
+
           if (exists) {
-            return prev.map((u) =>
-              u.id === user.uid
-                ? {
-                    ...u,
-                    name: user.displayName || u.name,
-                    email: user.email || u.email,
-                    photoURL: user.photoURL || u.photoURL,
-                    lastActive: new Date().toISOString(),
-                  }
-                : u
-            );
-          } else {
-            const newProfile: UserProfile = {
-              id: user.uid,
-              name: user.displayName || user.email?.split('@')[0] || 'Pengguna Google',
-              email: user.email || '',
-              photoURL: user.photoURL || undefined,
-              isGoogle: true,
-              roleDescription: 'Akun Google Cloud',
-              lastActive: new Date().toISOString(),
-            };
-            return [...prev, newProfile];
+            return prev.map((u) => (u.id === user.uid ? userObj : u));
           }
+          return [...prev, userObj];
         });
 
-        // Switch to this user if not already
+        // Switch to this user
         setActiveUserId(user.uid);
       },
       () => {
@@ -176,31 +242,36 @@ export default function App() {
   }, []);
 
   // When switching user, reload transactions for that user
-  const handleSwitchUser = useCallback((newUserId: string) => {
-    setActiveUserId(newUserId);
-    try {
-      const storageKey = `catatan_kekayaanku_trx_${newUserId}`;
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setTransactions(parsed);
-          showToast(`Beralih ke akun "${users.find((u) => u.id === newUserId)?.name || newUserId}"`);
-          return;
+  const handleSwitchUser = useCallback(
+    (newUserId: string) => {
+      setActiveUserId(newUserId);
+      setViewAllUsers(false);
+      setSelectedUserFilter('ALL');
+      try {
+        const storageKey = `catatan_kekayaanku_trx_${newUserId}`;
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setTransactions(parsed);
+            showToast(`Beralih ke akun "${users.find((u) => u.id === newUserId)?.name || newUserId}"`);
+            return;
+          }
         }
+        if (newUserId === DEFAULT_GUEST_PROFILE.id) {
+          setTransactions(INITIAL_TRANSACTIONS);
+        } else {
+          setTransactions([]);
+        }
+        showToast(`Beralih ke akun "${users.find((u) => u.id === newUserId)?.name || newUserId}"`);
+      } catch (e) {
+        console.error('Error switching user', e);
       }
-      if (newUserId === DEFAULT_GUEST_PROFILE.id) {
-        setTransactions(INITIAL_TRANSACTIONS);
-      } else {
-        setTransactions([]);
-      }
-      showToast(`Beralih ke akun "${users.find((u) => u.id === newUserId)?.name || newUserId}"`);
-    } catch (e) {
-      console.error('Error switching user', e);
-    }
-  }, [users]);
+    },
+    [users]
+  );
 
-  // Handle adding a new Google User (prompts Google account selector)
+  // Handle adding a new Google User
   const handleAddNewGoogleUser = async () => {
     setIsLoggingIn(true);
     try {
@@ -209,13 +280,15 @@ export default function App() {
         setCurrentUser(res.user);
         setAccessToken(res.accessToken);
 
+        const isSuper = isUserSuperAdmin(res.user);
         const newProfile: UserProfile = {
           id: res.user.uid,
           name: res.user.displayName || res.user.email?.split('@')[0] || 'Pengguna Google',
           email: res.user.email || '',
           photoURL: res.user.photoURL || undefined,
           isGoogle: true,
-          roleDescription: 'Akun Google Cloud',
+          role: isSuper ? 'super_admin' : 'user',
+          roleDescription: isSuper ? 'Super Administrator' : 'Pengguna Publik',
           lastActive: new Date().toISOString(),
         };
 
@@ -229,7 +302,11 @@ export default function App() {
 
         handleSwitchUser(res.user.uid);
         setIsUserModalOpen(false);
-        showToast(`Berhasil masuk sebagai ${newProfile.name} (${newProfile.email})!`);
+        showToast(
+          isSuper
+            ? `Selamat datang Super Administrator (${newProfile.email})!`
+            : `Berhasil masuk sebagai ${newProfile.name} (${newProfile.email})! Data Anda tersimpan aman dan terisolasi.`
+        );
       }
     } catch (err: any) {
       showToast(err.message || 'Gagal masuk akun Google.');
@@ -256,12 +333,11 @@ export default function App() {
     showToast(`Profil baru "${name}" berhasil dibuat dan diaktifkan.`);
   };
 
-  // Delete profile (supports deleting any profile, including active and last one)
+  // Delete profile
   const handleDeleteUser = async (userId: string) => {
     const targetUser = users.find((u) => u.id === userId);
     const targetName = targetUser?.name || 'Akun';
 
-    // If it's a Google account, sign out Google session if currently signed in
     if (targetUser?.isGoogle && currentUser?.uid === userId) {
       try {
         await logout();
@@ -272,7 +348,6 @@ export default function App() {
       setAccessToken(null);
     }
 
-    // Remove local storage transactions for this user
     try {
       localStorage.removeItem(`catatan_kekayaanku_trx_${userId}`);
     } catch (e) {
@@ -282,7 +357,6 @@ export default function App() {
     const remainingUsers = users.filter((u) => u.id !== userId);
 
     if (remainingUsers.length === 0) {
-      // If the last remaining account is deleted, reset to a clean default guest profile
       const freshGuest: UserProfile = {
         ...DEFAULT_GUEST_PROFILE,
         lastActive: new Date().toISOString(),
@@ -311,23 +385,37 @@ export default function App() {
     await logout();
     setCurrentUser(null);
     setAccessToken(null);
+    setViewAllUsers(false);
     showToast('Berhasil keluar dari sesi Google.');
   };
 
   // Count transactions for a given user ID
-  const getUserTransactionCount = useCallback((userId: string): number => {
-    if (userId === activeUserId) return transactions.length;
-    try {
-      const storageKey = `catatan_kekayaanku_trx_${userId}`;
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.length;
-      }
-      if (userId === DEFAULT_GUEST_PROFILE.id) return INITIAL_TRANSACTIONS.length;
-    } catch (e) {}
-    return 0;
-  }, [activeUserId, transactions.length]);
+  const getUserTransactionCount = useCallback(
+    (userId: string): number => {
+      if (userId === activeUserId) return transactions.length;
+      try {
+        const storageKey = `catatan_kekayaanku_trx_${userId}`;
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed.length;
+        }
+        if (userId === DEFAULT_GUEST_PROFILE.id) return INITIAL_TRANSACTIONS.length;
+      } catch (e) {}
+      return 0;
+    },
+    [activeUserId, transactions.length]
+  );
+
+  // Sync local data to Firestore if logged in
+  const handleSyncToFirestore = async () => {
+    if (!currentUser) {
+      showToast('Silakan masuk dengan Google terlebih dahulu untuk menyinkronkan.');
+      return;
+    }
+    const count = await syncLocalTransactionsToFirestore(transactions, activeUser);
+    showToast(`Berhasil menyinkronkan ${count} transaksi ke Cloud Firestore!`);
+  };
 
   // Derived available months
   const availableMonths = useMemo(() => {
@@ -357,6 +445,15 @@ export default function App() {
     return calculateMonthlySummary(transactions, prevMonthStr);
   }, [transactions, selectedMonth]);
 
+  // Aggregate values for Super Admin platform view
+  const totalIncomeAll = useMemo(() => {
+    return transactions.reduce((sum, t) => (t.tipe === 'pemasukan' ? sum + t.jumlah : sum), 0);
+  }, [transactions]);
+
+  const totalExpenseAll = useMemo(() => {
+    return transactions.reduce((sum, t) => (t.tipe === 'pengeluaran' ? sum + t.jumlah : sum), 0);
+  }, [transactions]);
+
   const handleOpenNewTransaction = () => {
     setEditingTransaction(null);
     setIsFormOpen(true);
@@ -367,28 +464,54 @@ export default function App() {
     setIsFormOpen(true);
   };
 
-  const handleSaveTransaction = (
+  const handleSaveTransaction = async (
     data: Omit<Transaction, 'id' | 'createdAt'>,
     editId?: string
   ) => {
     if (editId) {
-      setTransactions((prev) =>
-        prev.map((t) =>
-          t.id === editId
-            ? { ...t, ...data }
-            : t
-        )
-      );
+      const existing = transactions.find((t) => t.id === editId);
+      const updated: Transaction = {
+        ...existing,
+        ...data,
+        id: editId,
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        userId: existing?.userId || (currentUser ? currentUser.uid : activeUserId),
+        userEmail: existing?.userEmail || activeUser.email,
+        userName: existing?.userName || activeUser.name,
+      };
+
+      setTransactions((prev) => prev.map((t) => (t.id === editId ? updated : t)));
+
+      if (currentUser) {
+        try {
+          await saveTransaction(updated, activeUser);
+        } catch (e) {
+          console.error('Failed to sync update to Firestore', e);
+        }
+      }
       showToast('Transaksi berhasil diperbarui.');
     } else {
       const newTrx: Transaction = {
         ...data,
         id: `trx-${Date.now()}`,
         createdAt: new Date().toISOString(),
+        userId: currentUser ? currentUser.uid : activeUserId,
+        userEmail: activeUser.email,
+        userName: activeUser.name,
       };
+
       setTransactions((prev) => [newTrx, ...prev]);
       if (newTrx.bulan && newTrx.bulan !== selectedMonth) {
         setSelectedMonth(newTrx.bulan);
+      }
+
+      if (currentUser) {
+        try {
+          await saveTransaction(newTrx, activeUser);
+        } catch (e) {
+          console.error('Failed to save to Firestore', e);
+        }
       }
       showToast(`Transaksi baru dicatat di akun ${activeUser.name}!`);
     }
@@ -401,9 +524,19 @@ export default function App() {
     }
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (deletingTransaction) {
-      setTransactions((prev) => prev.filter((t) => t.id !== deletingTransaction.id));
+      const idToDelete = deletingTransaction.id;
+      setTransactions((prev) => prev.filter((t) => t.id !== idToDelete));
+
+      if (currentUser) {
+        try {
+          await deleteTransaction(idToDelete);
+        } catch (e) {
+          console.error('Failed to delete from Firestore', e);
+        }
+      }
+
       showToast('Transaksi telah dihapus.');
       setDeletingTransaction(null);
     }
@@ -451,23 +584,59 @@ export default function App() {
           onSearchChange={setSearchQuery}
         />
 
+        {/* Super Admin Control Panel or Regular User Privacy Banner */}
+        <SuperAdminBanner
+          isSuperAdmin={isSuperAdmin}
+          currentUserEmail={currentUser?.email || (activeUser.isGoogle ? activeUser.email : null)}
+          currentUserName={currentUser?.displayName || activeUser.name}
+          viewAllUsers={viewAllUsers}
+          onToggleViewAllUsers={setViewAllUsers}
+          allUsersList={allUsersList.length > 0 ? allUsersList : users}
+          selectedUserFilter={selectedUserFilter}
+          onSelectUserFilter={setSelectedUserFilter}
+          totalTransactionsCount={transactions.length}
+          totalIncomeAll={totalIncomeAll}
+          totalExpenseAll={totalExpenseAll}
+        />
+
         {/* User Scope Indicator Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 bg-stone-100/80 rounded-2xl border border-stone-200/60 text-xs">
-          <div className="flex items-center gap-2 text-stone-700 font-semibold">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-stone-100/80 rounded-2xl border border-stone-200/60 text-xs">
+          <div className="flex items-center gap-2 text-stone-700 font-semibold flex-wrap">
             <Users className="w-4 h-4 text-[#FF6A00]" />
             <span>Sedang melihat pembukuan:</span>
             <span className="font-extrabold text-[#2D2B2A] bg-white px-2.5 py-0.5 rounded-full border border-stone-200 shadow-2xs">
-              {activeUser.name}
+              {isSuperAdmin && viewAllUsers
+                ? `Semua Pengguna Publik (${selectedUserFilter === 'ALL' ? 'Seluruh Data' : 'Terfilter'})`
+                : activeUser.name}
             </span>
-            <span className="text-stone-400">({activeUser.roleDescription || activeUser.email})</span>
+            <span className="text-stone-400">
+              ({activeUser.roleDescription || activeUser.email})
+            </span>
+            {isSuperAdmin && (
+              <span className="text-[10px] font-black text-amber-900 bg-amber-300 px-2 py-0.5 rounded-full border border-amber-400">
+                👑 Super Admin
+              </span>
+            )}
           </div>
 
-          <button
-            onClick={() => setIsUserModalOpen(true)}
-            className="text-[11px] font-bold text-[#FF6A00] hover:text-[#FA5E00] hover:underline flex items-center gap-1"
-          >
-            <span>Ganti Akun ({users.length} terdaftar)</span>
-          </button>
+          <div className="flex items-center gap-3">
+            {currentUser && (
+              <button
+                onClick={handleSyncToFirestore}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 transition"
+                title="Sinkronkan catatan ke Cloud Firestore"
+              >
+                <UploadCloud className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sinkron Cloud</span>
+              </button>
+            )}
+            <button
+              onClick={() => setIsUserModalOpen(true)}
+              className="text-[11px] font-bold text-[#FF6A00] hover:text-[#FA5E00] hover:underline flex items-center gap-1"
+            >
+              <span>Ganti Akun ({users.length} terdaftar)</span>
+            </button>
+          </div>
         </div>
 
         {/* Hero Section */}
@@ -503,6 +672,7 @@ export default function App() {
               availableMonths={availableMonths}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              viewAllUsers={isSuperAdmin && viewAllUsers}
             />
           </section>
         )}
@@ -520,7 +690,7 @@ export default function App() {
         )}
 
         {activeTab === 'statistik' && (
-          <section aria-label="Grafik Statistik Transaksi">
+          <section aria-label="Grafik Statistik Kekayaan">
             <StatisticsChartsView
               transactions={transactions}
               selectedMonth={selectedMonth}
@@ -530,47 +700,68 @@ export default function App() {
           </section>
         )}
 
-        {/* Custom Footer */}
-        <footer className="pt-6 border-t border-stone-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-stone-500 no-print">
+        {/* Reset Demo Data & Brand Footer */}
+        <footer className="pt-4 border-t border-stone-200/60 flex flex-wrap items-center justify-between gap-4 text-xs text-stone-500">
           <div className="flex items-center gap-2">
-            <Coins className="w-4 h-4 text-[#FF6A00]" />
-            <span className="font-extrabold text-[#2D2B2A]">Catatan Kekayaanku</span>
-            <span aria-hidden="true">·</span>
-            <span>Multi-Akun & Sinkronisasi Google Drive</span>
+            <div className="w-6 h-6 rounded-full bg-[#FF6A00] text-white flex items-center justify-center font-bold text-xs">
+              <Coins className="w-3.5 h-3.5 text-amber-200" />
+            </div>
+            <span className="font-semibold text-stone-700">Catatan Kekayaanku</span>
+            <span>· Sistem Pembukuan Multi-Pengguna dengan Privasi Terisolasi & Super Admin Control</span>
           </div>
 
-          <div className="flex items-center gap-4 font-medium">
-            <button
-              onClick={() => setIsUserModalOpen(true)}
-              className="flex items-center gap-1.5 text-stone-600 hover:text-[#FF6A00] transition"
-              title="Kelola akun pengguna"
-            >
-              <Users className="w-3.5 h-3.5 text-[#FF6A00]" />
-              <span>Kelola Akun ({users.length})</span>
-            </button>
-            <span aria-hidden="true">·</span>
-            <button
-              onClick={() => setIsDriveModalOpen(true)}
-              className="flex items-center gap-1.5 text-stone-600 hover:text-[#FF6A00] transition"
-              title="Buka cadangan Google Drive"
-            >
-              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Google Drive</span>
-            </button>
-            <span aria-hidden="true">·</span>
+          <div className="flex items-center gap-3">
             <button
               onClick={handleResetToDemo}
-              className="flex items-center gap-1.5 text-stone-600 hover:text-[#FF6A00] transition"
-              title="Kembalikan data ke contoh awal"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition text-[11px] font-semibold border border-stone-200/80"
+              title="Reset data ke contoh pembukuan bawaan"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset Data Akun</span>
+              <RotateCcw className="w-3 h-3 text-stone-400" />
+              <span>Reset Contoh Data</span>
             </button>
+            <span className="text-[11px] text-stone-400">Versi 2.4 (Cloud Multi-User)</span>
           </div>
         </footer>
       </div>
 
-      {/* Multi-User Account Switcher Modal */}
+      {/* Transaction Add / Edit Modal */}
+      <TransactionFormModal
+        isOpen={isFormOpen}
+        onClose={() => {
+          setIsFormOpen(false);
+          setEditingTransaction(null);
+        }}
+        onSave={handleSaveTransaction}
+        editingTransaction={editingTransaction}
+        defaultMonth={selectedMonth}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={Boolean(deletingTransaction)}
+        onCancel={() => setDeletingTransaction(null)}
+        onConfirm={handleConfirmDelete}
+        transaction={deletingTransaction}
+      />
+
+      {/* Google Drive Backup & Sync Modal */}
+      <GoogleDriveModal
+        isOpen={isDriveModalOpen}
+        onClose={() => setIsDriveModalOpen(false)}
+        transactions={transactions}
+        onRestoreTransactions={handleRestoreTransactions}
+        currentUser={currentUser}
+        accessToken={accessToken}
+        onAuthSuccess={(user: User, token: string) => {
+          setCurrentUser(user);
+          setAccessToken(token);
+          showToast(`Berhasil terhubung ke Google Drive (${user.email})!`);
+        }}
+        onLogout={handleLogoutGoogle}
+        selectedMonth={selectedMonth}
+      />
+
+      {/* User Account Multi-User Modal with Delete Account Feature */}
       <UserAccountModal
         isOpen={isUserModalOpen}
         onClose={() => setIsUserModalOpen(false)}
@@ -583,42 +774,6 @@ export default function App() {
         onLogoutGoogle={handleLogoutGoogle}
         isLoggingIn={isLoggingIn}
         getUserTransactionCount={getUserTransactionCount}
-      />
-
-      {/* Google Drive Integration Modal */}
-      <GoogleDriveModal
-        isOpen={isDriveModalOpen}
-        onClose={() => setIsDriveModalOpen(false)}
-        transactions={transactions}
-        onRestoreTransactions={handleRestoreTransactions}
-        currentUser={currentUser}
-        accessToken={accessToken}
-        onAuthSuccess={(user, token) => {
-          setCurrentUser(user);
-          setAccessToken(token);
-        }}
-        onLogout={() => {
-          setCurrentUser(null);
-          setAccessToken(null);
-        }}
-        selectedMonth={selectedMonth}
-      />
-
-      {/* Transaction Create / Edit Modal */}
-      <TransactionFormModal
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-        onSave={handleSaveTransaction}
-        editingTransaction={editingTransaction}
-        defaultMonth={selectedMonth}
-      />
-
-      {/* Delete Transaction Confirm Modal */}
-      <DeleteConfirmModal
-        isOpen={!!deletingTransaction}
-        transaction={deletingTransaction}
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setDeletingTransaction(null)}
       />
     </div>
   );

@@ -9,6 +9,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { UserProfile } from '../types/user';
+import { isUserSuperAdmin } from '../services/firestoreService';
 
 interface UserAccountModalProps {
   isOpen: boolean;
@@ -104,6 +105,11 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                     <span className="text-xs font-bold uppercase tracking-wider text-[#FF6A00]">
                       Akun Sedang Aktif
                     </span>
+                    {isUserSuperAdmin(activeUser) && (
+                      <span className="text-[10px] font-black text-amber-900 bg-amber-200 px-2 py-0.2 rounded-full border border-amber-400">
+                        👑 Super Admin
+                      </span>
+                    )}
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   </div>
                   <h4 className="text-sm font-extrabold text-[#2D2B2A] truncate">
@@ -272,6 +278,11 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                           ) : (
                             <span className="text-[10px] font-bold text-stone-600 bg-stone-100 px-2 py-0.2 rounded-full">
                               Lokal
+                            </span>
+                          )}
+                          {isUserSuperAdmin(u) && (
+                            <span className="text-[10px] font-black text-amber-900 bg-amber-200 px-2 py-0.2 rounded-full border border-amber-400">
+                              👑 Super Admin
                             </span>
                           )}
                           {isActive && (

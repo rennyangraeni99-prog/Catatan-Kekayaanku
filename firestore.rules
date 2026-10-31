@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'rennyangraeni99@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'userId', 'bulan', 'tanggal', 'tipe', 'kategori', 'jumlah', 'catatan', 'createdAt'])
+        && data.keys().hasOnly(['id', 'userId', 'userEmail', 'userName', 'bulan', 'tanggal', 'tipe', 'jenisPemasukan', 'jenisPengeluaran', 'kategori', 'jumlah', 'catatan', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 64
+        && data.userId is string && data.userId == request.auth.uid
+        && data.bulan is string && data.bulan.size() == 7
+        && data.tanggal is string && data.tanggal.size() == 10
+        && (data.tipe == 'pemasukan' || data.tipe == 'pengeluaran')
+        && data.kategori is string && data.kategori.size() > 0 && data.kategori.size() <= 80
+        && data.jumlah is number && data.jumlah >= 0 && data.jumlah <= 100000000000000
+        && data.catatan is string && data.catatan.size() <= 400;
+    }
+
+    function isValidUser(data, userId) {
+      return data.keys().hasAll(['id', 'name', 'email', 'createdAt'])
+        && data.keys().hasOnly(['id', 'name', 'email', 'photoURL', 'role', 'createdAt', 'lastActive', 'roleDescription', 'isGoogle'])
+        && data.id == userId
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.email is string && data.email.size() <= 120;
+    }
+
+    // Default deny for all documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connectivity test doc
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // Admins list
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // User profiles - isolated per user, super admin can inspect all
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(request.resource.data, userId);
+      allow update: if isSignedIn() && (isOwner(userId) || isSuperAdmin()) && isValidUser(request.resource.data, userId);
+      allow delete: if isSignedIn() && (isOwner(userId) || isSuperAdmin());
+    }
+
+    // Transactions - isolated per user, strictly private! Only owner and Super Admin can access.
+    match /transactions/{transactionId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isSuperAdmin());
+      allow list: if isSignedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(transactionId) && isValidTransaction(request.resource.data);
+      allow update: if isSignedIn() && isValidId(transactionId) && (resource.data.userId == request.auth.uid || isSuperAdmin()) && isValidTransaction(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(transactionId) && (resource.data.userId == request.auth.uid || isSuperAdmin());
+    }
+  }
+}
