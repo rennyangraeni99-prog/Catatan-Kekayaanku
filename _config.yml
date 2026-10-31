@@ -1,0 +1,9 @@
+include:
+  - ".nojekyll"
+exclude:
+  - node_modules
+  - src
+  - package.json
+  - package-lock.json
+  - tsconfig.json
+  - vite.config.ts

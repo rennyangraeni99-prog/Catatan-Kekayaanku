@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlusCircle, BarChart3, FileText, ArrowLeftRight, Coins, Search, Cloud, Users, ChevronDown } from 'lucide-react';
+import { PlusCircle, BarChart3, FileText, ArrowLeftRight, Coins, Search, Cloud, Users, ChevronDown, LogOut } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { UserProfile } from '../types/user';
 
@@ -9,6 +9,7 @@ interface HeaderProps {
   onOpenNewTransaction: () => void;
   onOpenGoogleDrive: () => void;
   onOpenUserModal: () => void;
+  onLogout?: () => void;
   activeUser: UserProfile;
   totalUsersCount: number;
   currentUser: User | null;
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNewTransaction,
   onOpenGoogleDrive,
   onOpenUserModal,
+  onLogout,
   activeUser,
   totalUsersCount,
   currentUser,
@@ -141,6 +143,18 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
             )}
           </button>
+
+          {/* Logout Button if onLogout is provided */}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 text-xs font-bold rounded-full bg-black/20 hover:bg-black/35 text-white/95 transition shadow-xs whitespace-nowrap shrink-0"
+              title="Keluar dari akun dan kunci aplikasi"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Keluar</span>
+            </button>
+          )}
 
           {/* + Catat Action */}
           <button

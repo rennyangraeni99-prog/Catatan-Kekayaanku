@@ -33,7 +33,9 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build Vite application
-        run: npm run build
+        run: |
+          npm run build
+          touch dist/.nojekyll
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v4

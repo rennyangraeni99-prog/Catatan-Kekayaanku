@@ -26,6 +26,7 @@ import { TransactionFormModal } from './components/TransactionFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { UserAccountModal } from './components/UserAccountModal';
+import { LoginPage } from './components/LoginPage';
 import { CheckCircle2, RotateCcw, Coins, Cloud, Users, UploadCloud } from 'lucide-react';
 
 const USERS_STORAGE_KEY = 'catatan_kekayaanku_users_v2';
@@ -94,6 +95,8 @@ export default function App() {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState<boolean>(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   // Super Admin & Privacy states
   const [viewAllUsers, setViewAllUsers] = useState<boolean>(false);
@@ -204,41 +207,61 @@ export default function App() {
 
   // Listen to Firebase Auth state
   useEffect(() => {
+    let isMounted = true;
     const unsubscribe = initAuth(
       (user, token) => {
+        if (!isMounted) return;
         setCurrentUser(user);
         setAccessToken(token);
+        setAuthLoading(false);
+        setLoginError(null);
 
-        // Auto-register or update Google User Profile
-        setUsers((prev) => {
-          const exists = prev.find((u) => u.id === user.uid);
-          const isSuper = isUserSuperAdmin(user);
-          const userObj: UserProfile = {
-            id: user.uid,
-            name: user.displayName || user.email?.split('@')[0] || 'Pengguna Google',
-            email: user.email || '',
-            photoURL: user.photoURL || undefined,
-            isGoogle: true,
-            role: isSuper ? 'super_admin' : 'user',
-            roleDescription: isSuper ? 'Super Administrator' : 'Pengguna Publik',
-            lastActive: new Date().toISOString(),
-          };
+        if (user) {
+          // Auto-register or update Google User Profile
+          setUsers((prev) => {
+            const exists = prev.find((u) => u.id === user.uid);
+            const isSuper = isUserSuperAdmin(user);
+            const userObj: UserProfile = {
+              id: user.uid,
+              name: user.displayName || user.email?.split('@')[0] || 'Pengguna Google',
+              email: user.email || '',
+              photoURL: user.photoURL || undefined,
+              isGoogle: true,
+              role: isSuper ? 'super_admin' : 'user',
+              roleDescription: isSuper ? 'Super Administrator' : 'Pengguna Publik',
+              lastActive: new Date().toISOString(),
+            };
 
-          if (exists) {
-            return prev.map((u) => (u.id === user.uid ? userObj : u));
-          }
-          return [...prev, userObj];
-        });
+            if (exists) {
+              return prev.map((u) => (u.id === user.uid ? userObj : u));
+            }
+            return [...prev, userObj];
+          });
 
-        // Switch to this user
-        setActiveUserId(user.uid);
+          // Switch to this user
+          setActiveUserId(user.uid);
+        }
       },
       () => {
+        if (!isMounted) return;
         setCurrentUser(null);
         setAccessToken(null);
+        setAuthLoading(false);
       }
     );
-    return () => unsubscribe();
+
+    // Fallback safety timeout so applet is never frozen on loading splash
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        setAuthLoading(false);
+      }
+    }, 1800);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, []);
 
   // When switching user, reload transactions for that user
@@ -274,6 +297,7 @@ export default function App() {
   // Handle adding a new Google User
   const handleAddNewGoogleUser = async () => {
     setIsLoggingIn(true);
+    setLoginError(null);
     try {
       const res = await googleSignIn();
       if (res) {
@@ -309,7 +333,12 @@ export default function App() {
         );
       }
     } catch (err: any) {
-      showToast(err.message || 'Gagal masuk akun Google.');
+      const msg =
+        err?.code === 'auth/popup-closed-by-user'
+          ? 'Jendela login Google ditutup sebelum selesai. Silakan coba lagi.'
+          : err?.message || 'Gagal masuk akun Google.';
+      setLoginError(msg);
+      showToast(msg);
     } finally {
       setIsLoggingIn(false);
     }
@@ -380,13 +409,18 @@ export default function App() {
     }
   };
 
-  // Sign out Google session
+  // Sign out Google session and return user to mandatory LoginPage
   const handleLogoutGoogle = async () => {
-    await logout();
+    try {
+      await logout();
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
     setCurrentUser(null);
     setAccessToken(null);
     setViewAllUsers(false);
-    showToast('Berhasil keluar dari sesi Google.');
+    setIsUserModalOpen(false);
+    showToast('Berhasil keluar. Halaman kini terkunci.');
   };
 
   // Count transactions for a given user ID
@@ -558,6 +592,44 @@ export default function App() {
     showToast(`Data transaksi berhasil dipulihkan (${restored.length} data) untuk akun ${activeUser.name}!`);
   };
 
+  // 1. Initial Authentication Check Screen
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#F06553] flex flex-col items-center justify-center p-4 selection:bg-[#FF6B00] selection:text-white">
+        <div className="bg-[#FFFBF5] p-8 sm:p-10 rounded-3xl sm:rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-4 max-w-sm w-full text-center border-4 border-white/70 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#FF6B00] to-[#FA5E00] flex items-center justify-center text-white shadow-lg shadow-orange-500/30">
+            <Coins className="w-8 h-8 text-amber-200 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="font-extrabold text-[#2D2B2A] text-xl">Catatan Kekayaanku</h3>
+            <p className="text-xs text-stone-500 font-medium">Memeriksa status akun & sesi login...</p>
+          </div>
+          <div className="w-7 h-7 border-3 border-[#FF6B00] border-t-transparent rounded-full animate-spin mt-2" />
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Mandatory Login Page Gate: User MUST log in before accessing the app
+  if (!currentUser) {
+    return (
+      <>
+        {toastMessage && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-5 py-3 bg-[#2D2B2A] text-white text-xs font-bold rounded-full shadow-2xl border border-stone-700 animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+        <LoginPage
+          onLogin={handleAddNewGoogleUser}
+          isLoggingIn={isLoggingIn}
+          errorMessage={loginError}
+        />
+      </>
+    );
+  }
+
+  // 3. Authenticated Dashboard
   return (
     <div className="min-h-screen bg-[#F06553] p-2.5 sm:p-6 lg:p-8 flex flex-col justify-center items-center">
       {/* Toast Notification */}
@@ -577,6 +649,7 @@ export default function App() {
           onOpenNewTransaction={handleOpenNewTransaction}
           onOpenGoogleDrive={() => setIsDriveModalOpen(true)}
           onOpenUserModal={() => setIsUserModalOpen(true)}
+          onLogout={handleLogoutGoogle}
           activeUser={activeUser}
           totalUsersCount={users.length}
           currentUser={currentUser}
