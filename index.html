@@ -12,9 +12,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/index.css" />
   </head>
   <body class="bg-[#F06553] text-stone-900 antialiased font-sans selection:bg-[#FF6B00] selection:text-white min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Fallback for static GitHub Pages hosting if .tsx is served directly without Vite server
+      if (window.location.hostname.includes('github.io')) {
+        setTimeout(() => {
+          if (!window.__APP_MOUNTED__) {
+            const s = document.createElement('script');
+            s.type = 'module';
+            s.src = './assets/index.js';
+            document.body.appendChild(s);
+          }
+        }, 150);
+      }
+    </script>
   </body>
 </html>

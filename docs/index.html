@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Catatan Kekayaanku - Pencatatan Keuangan</title>
+    <meta name="description" content="Aplikasi pencatatan keuangan lengkap dengan filter bulan, jenis pemasukan dan pengeluaran, kategori, catatan, ringkasan laporan bulanan, dan grafik statistik transaksi." />
+    <meta property="og:title" content="Catatan Kekayaanku - Pencatatan Keuangan" />
+    <meta property="og:description" content="Aplikasi pencatatan keuangan lengkap dengan filter bulan, jenis pemasukan dan pengeluaran, kategori, catatan, ringkasan laporan bulanan, dan grafik statistik transaksi." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="./assets/index.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index.css">
+  </head>
+  <body class="bg-[#F06553] text-stone-900 antialiased font-sans selection:bg-[#FF6B00] selection:text-white min-h-screen">
+    <div id="root"></div>
+    <script>
+      // Fallback for static GitHub Pages hosting if .tsx is served directly without Vite server
+      if (window.location.hostname.includes('github.io')) {
+        setTimeout(() => {
+          if (!window.__APP_MOUNTED__) {
+            const s = document.createElement('script');
+            s.type = 'module';
+            s.src = './assets/index.js';
+            document.body.appendChild(s);
+          }
+        }, 150);
+      }
+    </script>
+  </body>
+</html>
